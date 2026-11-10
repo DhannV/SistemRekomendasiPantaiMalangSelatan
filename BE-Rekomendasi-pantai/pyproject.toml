@@ -1,0 +1,23 @@
+[project]
+name = "be-rekomendasi-pantai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "DhannV", email = "alrizky2906@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi[standard]>=0.162.0",
+    "psycopg[binary]>=3.3.6",
+    "python-dotenv>=1.2.4",
+    "sastrawi>=1.0.1",
+    "sqlalchemy>=2.0.55",
+]
+
+[project.scripts]
+be-rekomendasi-pantai = "be_rekomendasi_pantai:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
