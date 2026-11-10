@@ -7,7 +7,11 @@ from Sastrawi.StopWordRemover.StopWordRemoverFactory import (
     StopWordRemoverFactory,
 )
 
-# Konfigurasi mengikuti notebook Google Colab
+
+# =========================================================
+# 1. KONFIGURASI PREPROCESSING
+# =========================================================
+
 KATA_NEGASI = ["tidak", "bukan", "kurang", "belum"]
 
 FRASA_DIHAPUS = ["kurang lebih"]
@@ -50,32 +54,77 @@ STOPWORD_TAMBAHAN = {
 }
 
 STOPWORD_NAMA_TEMPAT = set()
-BUANG_KATA_NAMA_PANTAI = False
+
+
+# =========================================================
+# 2. INISIALISASI STEMMER DAN STOPWORD
+# =========================================================
 
 stemmer = StemmerFactory().create_stemmer()
 
+stopword_factory = StopWordRemoverFactory()
+
 DAFTAR_STOPWORD = (
-    set(StopWordRemoverFactory().get_stop_words())
+    set(stopword_factory.get_stop_words())
     | STOPWORD_TAMBAHAN
     | STOPWORD_NAMA_TEMPAT
 )
+
+
+# =========================================================
+# 3. POLA REGEX
+# =========================================================
+
+POLA_URL = re.compile(r"http\S+")
+
+POLA_KARAKTER_NON_LATIN = re.compile(r"[^\x00-\x7F]+")
+
+POLA_HURUF_BERULANG = re.compile(r"(.)\1{2,}")
+
+POLA_KARAKTER_TIDAK_VALID = re.compile(r"[^a-z\s]+")
+
+POLA_SPASI = re.compile(r"\s+")
 
 POLA_NEGASI = re.compile(
     r"\b(" + "|".join(map(re.escape, KATA_NEGASI)) + r")\s+([a-z]+)"
 )
 
 
+# =========================================================
+# 4. PEMBERSIHAN TEKS
+# =========================================================
+
 def bersihkan_teks(teks):
+    """
+    Membersihkan teks dari URL, karakter khusus,
+    angka, simbol, dan spasi berlebihan.
+    """
+
     teks = str(teks or "").lower()
-    teks = re.sub(r"http\S+", "", teks)
-    teks = re.sub(r"[^\x00-\x7F]+", " ", teks)
-    teks = re.sub(r"(.)\1{2,}", r"\1", teks)
-    teks = re.sub(r"[^a-z\s]", " ", teks)
-    teks = re.sub(r"\s+", " ", teks).strip()
+
+    teks = POLA_URL.sub(" ", teks)
+
+    teks = POLA_KARAKTER_NON_LATIN.sub(" ", teks)
+
+    teks = POLA_HURUF_BERULANG.sub(r"\1", teks)
+
+    teks = POLA_KARAKTER_TIDAK_VALID.sub(" ", teks)
+
+    teks = POLA_SPASI.sub(" ", teks).strip()
+
     return teks
 
 
+# =========================================================
+# 5. NORMALISASI KATA
+# =========================================================
+
 def perbaiki_kata_baku(teks):
+    """
+    Mengubah kata tidak baku menjadi kata baku
+    berdasarkan kamus yang telah ditentukan.
+    """
+
     hasil = []
 
     for kata in teks.split():
@@ -86,13 +135,29 @@ def perbaiki_kata_baku(teks):
 
 
 def hapus_frasa_bukan_negasi(teks):
+    """
+    Menghapus frasa tertentu tanpa menghilangkan
+    kata negasi yang memiliki makna penting.
+    """
+
     for frasa in FRASA_DIHAPUS:
         teks = teks.replace(frasa, " ")
-    return teks
 
+    return POLA_SPASI.sub(" ", teks).strip()
+
+
+# =========================================================
+# 6. STEMMING
+# =========================================================
 
 @lru_cache(maxsize=10000)
 def stem_kata(kata):
+    """
+    Mengubah kata menjadi bentuk dasarnya.
+    Menggunakan cache agar kata yang sama tidak
+    perlu diproses ulang oleh Sastrawi.
+    """
+
     if "_" in kata:
         awalan, inti = kata.split("_", 1)
         return awalan + "_" + stem_kata(inti)
@@ -100,22 +165,51 @@ def stem_kata(kata):
     return stemmer.stem(kata)
 
 
+# =========================================================
+# 7. PREPROCESSING AKHIR
+# =========================================================
+
 def proses_akhir(teks_mentah):
-    """Preprocessing yang sama digunakan untuk ulasan dan query pengguna."""
+    """
+    Tahapan preprocessing:
+    1. Cleaning
+    2. Normalisasi kata
+    3. Penghapusan frasa tertentu
+    4. Penandaan kata negasi
+    5. Stopword removal
+    6. Stemming
+    7. Stopword removal ulang
+    """
+
+    # 1. Cleaning
     teks = bersihkan_teks(teks_mentah)
+
+    # 2. Normalisasi kata tidak baku
     teks = perbaiki_kata_baku(teks)
+
+    # 3. Menghapus frasa tertentu
     teks = hapus_frasa_bukan_negasi(teks)
+
+    # 4. Menjaga makna kata negasi
     teks = POLA_NEGASI.sub(r"\1_\2", teks)
 
+    # 5. Stopword removal sebelum stemming
     kata_kata = [
-        kata for kata in teks.split()
+        kata
+        for kata in teks.split()
         if kata not in DAFTAR_STOPWORD
     ]
 
-    kata_kata = [stem_kata(kata) for kata in kata_kata]
-
+    # 6. Stemming dengan cache
     kata_kata = [
-        kata for kata in kata_kata
+        stem_kata(kata)
+        for kata in kata_kata
+    ]
+
+    # 7. Stopword removal setelah stemming
+    kata_kata = [
+        kata
+        for kata in kata_kata
         if kata not in DAFTAR_STOPWORD and len(kata) > 1
     ]
 

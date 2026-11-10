@@ -114,28 +114,14 @@ def mengandung_frasa(teks, frasa):
 
 
 def siapkan_ulasan(ulasan_teks):
-    """
-    Menyiapkan format ulasan dari Supabase.
-
-    Setiap item minimal memiliki:
-    {
-        "pantai": nama pantai,
-        "teks": isi ulasan
-    }
-    """
     hasil = []
 
     for ulasan in ulasan_teks:
-        nama_pantai = str(ulasan.get("pantai") or "").strip()
-        teks_asli = str(ulasan.get("teks") or "").strip()
-
-        if not nama_pantai or not teks_asli:
-            continue
+        teks_asli = ulasan["teks"]
 
         hasil.append({
-            "pantai": nama_pantai,
+            "pantai": ulasan["pantai"],
             "teks": teks_asli,
-            "teks_bersih": bersihkan_teks(teks_asli),
             "teks_final": proses_akhir(teks_asli),
         })
 
@@ -277,11 +263,21 @@ def bangun_semua_profil(ulasan_dari_database):
     waktu_total = time.perf_counter()
 
     # 1. Preprocessing ulasan
+    print("[PROFIL] Memulai preprocessing...", flush=True)
+
     mulai = time.perf_counter()
     ulasan_teks = siapkan_ulasan(ulasan_dari_database)
     waktu_preprocessing = time.perf_counter() - mulai
 
+    print(
+        f"[PROFIL] Preprocessing selesai: "
+        f"{waktu_preprocessing:.2f} detik",
+        flush=True,
+    )
+
     # 2. Daftar pantai
+    print("[PROFIL] Membentuk daftar pantai...", flush=True)
+
     mulai = time.perf_counter()
     daftar_pantai = sorted({
         ulasan["pantai"]
@@ -289,7 +285,16 @@ def bangun_semua_profil(ulasan_dari_database):
     })
     waktu_daftar = time.perf_counter() - mulai
 
+    print(
+        f"[PROFIL] Daftar pantai selesai: "
+        f"{len(daftar_pantai)} pantai | "
+        f"{waktu_daftar:.2f} detik",
+        flush=True,
+    )
+
     # 3. Proporsi atribut
+    print("[PROFIL] Menghitung proporsi atribut 4A...", flush=True)
+
     mulai = time.perf_counter()
     proporsi_atribut = hitung_proporsi_atribut(
         ulasan_teks,
@@ -297,7 +302,15 @@ def bangun_semua_profil(ulasan_dari_database):
     )
     waktu_proporsi = time.perf_counter() - mulai
 
+    print(
+        f"[PROFIL] Proporsi atribut selesai: "
+        f"{waktu_proporsi:.2f} detik",
+        flush=True,
+    )
+
     # 4. Atribut menonjol
+    print("[PROFIL] Menentukan atribut menonjol...", flush=True)
+
     mulai = time.perf_counter()
     atribut_menonjol = tentukan_atribut_menonjol(
         proporsi_atribut,
@@ -305,7 +318,15 @@ def bangun_semua_profil(ulasan_dari_database):
     )
     waktu_atribut = time.perf_counter() - mulai
 
+    print(
+        f"[PROFIL] Atribut menonjol selesai: "
+        f"{waktu_atribut:.2f} detik",
+        flush=True,
+    )
+
     # 5. Profil istilah
+    print("[PROFIL] Membentuk profil istilah...", flush=True)
+
     mulai = time.perf_counter()
     istilah_pantai = bangun_profil_istilah(
         ulasan_teks,
@@ -314,16 +335,16 @@ def bangun_semua_profil(ulasan_dari_database):
     )
     waktu_profil_istilah = time.perf_counter() - mulai
 
+    print(
+        f"[PROFIL] Profil istilah selesai: "
+        f"{waktu_profil_istilah:.2f} detik",
+        flush=True,
+    )
+
     waktu_total = time.perf_counter() - waktu_total
 
     print(
-        "[PERFORMA PROFIL] "
-        f"Preprocessing: {waktu_preprocessing:.2f} detik | "
-        f"Daftar pantai: {waktu_daftar:.2f} detik | "
-        f"Proporsi atribut: {waktu_proporsi:.2f} detik | "
-        f"Atribut menonjol: {waktu_atribut:.2f} detik | "
-        f"Profil istilah: {waktu_profil_istilah:.2f} detik | "
-        f"Total: {waktu_total:.2f} detik",
+        f"[PERFORMA PROFIL] Total: {waktu_total:.2f} detik",
         flush=True,
     )
 
