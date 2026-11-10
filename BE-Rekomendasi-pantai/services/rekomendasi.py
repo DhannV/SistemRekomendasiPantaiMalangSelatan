@@ -2,38 +2,127 @@
 import time
 
 from services.preprocessing import proses_akhir
-from services.profil_pantai import bangun_semua_profil
 from services.tfidf_manual import (
-    bangun_semua_vektor_tfidf,
     buat_vektor_query,
+    bangun_semua_vektor_tfidf,
 )
+from services.profil_pantai import bangun_semua_profil
 from services.cosine_similarity import hitung_cosine_similarity
 from services.rating_aggregation import hitung_bwr
 
 
+# =========================================================
+# 1. KONFIGURASI REKOMENDASI
+# =========================================================
+
 ALPHA = 0.6
 TOP_N = 5
+
+# Versi struktur model
+VERSI_MODEL = 1
 
 # Cache model di memori backend
 _MODEL_CACHE = None
 
 
+# =========================================================
+# 2. VALIDASI DAN CACHE MODEL
+# =========================================================
+
 def model_sudah_disiapkan():
-    """Memeriksa apakah model sudah tersedia di memori."""
+    """
+    Memeriksa apakah model rekomendasi sudah tersedia
+    di dalam memori backend.
+    """
     return _MODEL_CACHE is not None
 
 
-def siapkan_model(data_ulasan, data_rating):
+def simpan_model_ke_memori(model):
+    """
+    Memasukkan model yang sudah dibangun atau dimuat
+    dari file Joblib ke dalam cache memori.
+    """
     global _MODEL_CACHE
 
-    if _MODEL_CACHE is not None:
-        return
+    if not isinstance(model, dict):
+        raise TypeError(
+            "Format model rekomendasi harus berupa dictionary."
+        )
+
+    kunci_wajib = {
+        "vektor_pantai",
+        "kosakata",
+        "idf",
+        "skor_bwr",
+    }
+
+    kunci_hilang = kunci_wajib - set(model.keys())
+
+    if kunci_hilang:
+        raise ValueError(
+            f"Model tidak lengkap. Key yang hilang: {kunci_hilang}"
+        )
+
+    if not isinstance(model["vektor_pantai"], dict):
+        raise TypeError("vektor_pantai harus berupa dictionary.")
+
+    if not isinstance(model["kosakata"], list):
+        raise TypeError("kosakata harus berupa list.")
+
+    if not isinstance(model["idf"], dict):
+        raise TypeError("idf harus berupa dictionary.")
+
+    if not isinstance(model["skor_bwr"], dict):
+        raise TypeError("skor_bwr harus berupa dictionary.")
+
+    if not model["vektor_pantai"]:
+        raise ValueError("Model tidak memiliki data vektor pantai.")
+
+    _MODEL_CACHE = model
+
+    print(
+        f"[MODEL] Model berhasil dimuat ke memori. "
+        f"Jumlah pantai: {len(model['vektor_pantai'])}",
+        flush=True,
+    )
+
+
+def hapus_model_dari_memori():
+    """
+    Menghapus model dari cache memori.
+    Berguna jika ingin memuat ulang model.
+    """
+    global _MODEL_CACHE
+    _MODEL_CACHE = None
+
+    print("[MODEL] Cache model berhasil dikosongkan.", flush=True)
+
+
+# =========================================================
+# 3. PEMBENTUKAN MODEL
+# =========================================================
+
+def bangun_model(data_ulasan, data_rating):
+    """
+    Membangun model rekomendasi dari data ulasan dan rating.
+
+    Fungsi ini dijalankan secara lokal melalui script
+    pembuatan model, bukan ketika pengguna melakukan pencarian.
+
+    Tahapan:
+    1. Pembentukan profil pantai.
+    2. Pembentukan vektor TF-IDF.
+    3. Perhitungan Bayesian Weighted Rating.
+    """
 
     waktu_total = time.perf_counter()
 
-    print("[MODEL] Memulai persiapan model...", flush=True)
+    print("[MODEL] Memulai pembentukan model...", flush=True)
 
+    # -----------------------------------------------------
     # 1. Pembentukan profil pantai
+    # -----------------------------------------------------
+
     mulai = time.perf_counter()
 
     print("[MODEL] Memulai pembentukan profil pantai...", flush=True)
@@ -47,7 +136,10 @@ def siapkan_model(data_ulasan, data_rating):
         flush=True,
     )
 
+    # -----------------------------------------------------
     # 2. Pembentukan TF-IDF
+    # -----------------------------------------------------
+
     mulai = time.perf_counter()
 
     print("[MODEL] Memulai pembentukan TF-IDF...", flush=True)
@@ -63,7 +155,10 @@ def siapkan_model(data_ulasan, data_rating):
         flush=True,
     )
 
+    # -----------------------------------------------------
     # 3. Perhitungan Bayesian Weighted Rating
+    # -----------------------------------------------------
+
     mulai = time.perf_counter()
 
     print("[MODEL] Memulai perhitungan BWR...", flush=True)
@@ -77,8 +172,12 @@ def siapkan_model(data_ulasan, data_rating):
         flush=True,
     )
 
-    # 4. Simpan model ke cache
-    _MODEL_CACHE = {
+    # -----------------------------------------------------
+    # 4. Menyusun model
+    # -----------------------------------------------------
+
+    model = {
+        "versi_model": VERSI_MODEL,
         "vektor_pantai": hasil_tfidf["vektor_pantai"],
         "kosakata": hasil_tfidf["kosakata"],
         "idf": hasil_tfidf["idf"],
@@ -96,45 +195,61 @@ def siapkan_model(data_ulasan, data_rating):
         flush=True,
     )
 
-    print(
-        "Model rekomendasi berhasil disiapkan dan disimpan di memori.",
-        flush=True,
-    )
+    print("[MODEL] Pembentukan model berhasil.", flush=True)
 
+    return model
+
+
+# =========================================================
+# 4. PROSES REKOMENDASI PANTAI
+# =========================================================
 
 def rekomendasikan_pantai(
     query,
-    data_ulasan=None,
-    data_rating=None,
     top_n=TOP_N,
     alpha=ALPHA,
     gerbang=True,
     normalisasi_cosine=True,
 ):
     """
-    Menghasilkan rekomendasi menggunakan cosine similarity dan BWR.
+    Menghasilkan rekomendasi pantai menggunakan metode
+    Content-Based Filtering dan Rating Aggregation.
 
-    Model dipersiapkan satu kali. Setiap pencarian berikutnya
-    hanya memproses query dan menghitung skor rekomendasi.
+    Rating Aggregation menggunakan metode
+    Bayesian Weighted Rating (BWR).
+
+    Model harus sudah dimuat ke memori sebelum fungsi ini
+    dijalankan.
     """
 
-    if not query or not query.strip():
-        raise ValueError("Kata kunci pencarian tidak boleh kosong.")
+    # -----------------------------------------------------
+    # 1. Validasi input
+    # -----------------------------------------------------
+
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError(
+            "Kata kunci pencarian tidak boleh kosong."
+        )
 
     if not 0 <= alpha <= 1:
-        raise ValueError("Alpha harus berada di antara 0 dan 1.")
+        raise ValueError(
+            "Alpha harus berada di antara 0 dan 1."
+        )
 
     if top_n < 0:
-        raise ValueError("top_n tidak boleh negatif.")
+        raise ValueError(
+            "top_n tidak boleh negatif."
+        )
 
-    # Persiapan hanya dilakukan jika model belum tersedia
-    if _MODEL_CACHE is None:
-        if data_ulasan is None or data_rating is None:
-            raise RuntimeError(
-                "Model belum disiapkan. Jalankan siapkan_model() terlebih dahulu."
-            )
+    # -----------------------------------------------------
+    # 2. Memastikan model sudah tersedia
+    # -----------------------------------------------------
 
-        siapkan_model(data_ulasan, data_rating)
+    if not model_sudah_disiapkan():
+        raise RuntimeError(
+            "Model rekomendasi belum dimuat. "
+            "Pastikan file model sudah dimuat saat startup."
+        )
 
     model = _MODEL_CACHE
 
@@ -143,7 +258,10 @@ def rekomendasikan_pantai(
     idf = model["idf"]
     bwr_normal = model["skor_bwr"]
 
-    # 1. Preprocessing query pengguna
+    # -----------------------------------------------------
+    # 3. Preprocessing query pengguna
+    # -----------------------------------------------------
+
     query_final = proses_akhir(query)
 
     if not query_final:
@@ -165,20 +283,32 @@ def rekomendasikan_pantai(
             "data": [],
         }
 
-    # 2. Buat vektor untuk query baru
+    # -----------------------------------------------------
+    # 4. Membuat vektor query TF-IDF
+    # -----------------------------------------------------
+
     vektor_query = buat_vektor_query(
         query_final,
         kosakata,
         idf,
     )
 
-    # 3. Hitung cosine similarity
+    # -----------------------------------------------------
+    # 5. Menghitung cosine similarity
+    # -----------------------------------------------------
+
     skor_cosine = {
-        pantai: hitung_cosine_similarity(vektor_query, vektor)
+        pantai: hitung_cosine_similarity(
+            vektor_query,
+            vektor,
+        )
         for pantai, vektor in vektor_pantai.items()
     }
 
-    # 4. Periksa kecocokan teks
+    # -----------------------------------------------------
+    # 6. Memeriksa kecocokan teks
+    # -----------------------------------------------------
+
     ada_kecocokan_teks = (
         bool(vektor_query)
         and any(skor > 0 for skor in skor_cosine.values())
@@ -188,11 +318,15 @@ def rekomendasikan_pantai(
 
     if not ada_kecocokan_teks:
         peringatan = (
-            "Tidak ada istilah query yang cocok dengan kosakata TF-IDF. "
-            "Hasil rekomendasi ditentukan berdasarkan rating."
+            "Tidak ada istilah query yang cocok dengan "
+            "kosakata TF-IDF. Hasil rekomendasi ditentukan "
+            "berdasarkan rating."
         )
 
-    # 5. Tentukan kandidat pantai
+    # -----------------------------------------------------
+    # 7. Menentukan kandidat pantai
+    # -----------------------------------------------------
+
     if gerbang and ada_kecocokan_teks:
         kandidat = {
             pantai: skor
@@ -202,27 +336,40 @@ def rekomendasikan_pantai(
     else:
         kandidat = dict(skor_cosine)
 
-    # 6. Normalisasi cosine relatif terhadap skor maksimum
-    skor_maks = max(skor_cosine.values(), default=0.0)
+    # -----------------------------------------------------
+    # 8. Normalisasi cosine similarity
+    # -----------------------------------------------------
+
+    skor_maks = max(
+        skor_cosine.values(),
+        default=0.0,
+    )
 
     if normalisasi_cosine:
+
         if skor_maks > 0:
             cosine_normal = {
                 pantai: skor / skor_maks
                 for pantai, skor in kandidat.items()
             }
+
         else:
             cosine_normal = {
                 pantai: 0.0
                 for pantai in kandidat
             }
+
     else:
         cosine_normal = dict(kandidat)
 
-    # 7. Hitung skor hybrid menggunakan BWR yang sudah tersimpan
+    # -----------------------------------------------------
+    # 9. Menghitung skor hybrid
+    # -----------------------------------------------------
+
     hasil_akhir = []
 
     for pantai, skor_cos in cosine_normal.items():
+
         skor_rating = bwr_normal.get(pantai, 0.0)
 
         skor_hybrid = (
@@ -237,7 +384,10 @@ def rekomendasikan_pantai(
             "skor_akhir": round(skor_hybrid, 6),
         })
 
-    # 8. Urutkan berdasarkan skor hybrid
+    # -----------------------------------------------------
+    # 10. Mengurutkan hasil rekomendasi
+    # -----------------------------------------------------
+
     hasil_akhir.sort(
         key=lambda item: (
             item["skor_akhir"],
@@ -247,8 +397,15 @@ def rekomendasikan_pantai(
         reverse=True,
     )
 
-    # 9. Ambil Top-N
+    # -----------------------------------------------------
+    # 11. Mengambil Top-N
+    # -----------------------------------------------------
+
     hasil_akhir = hasil_akhir[:top_n]
+
+    # -----------------------------------------------------
+    # 12. Menyusun respons
+    # -----------------------------------------------------
 
     respons = {
         "query": query,

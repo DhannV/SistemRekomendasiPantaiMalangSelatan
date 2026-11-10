@@ -157,7 +157,7 @@ def hitung_proporsi_atribut(ulasan_teks, daftar_pantai):
                 jumlah = 0
 
                 for ulasan in ulasan_pantai:
-                    teks = ulasan["teks_bersih"]
+                    teks = ulasan["teks_final"]
 
                     if any(
                         mengandung_frasa(teks, kk)

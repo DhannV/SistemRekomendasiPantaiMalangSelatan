@@ -1,4 +1,6 @@
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from database import engine, test_connection
+from services.model_loader import muat_model
 
 from routers.auth import router as auth_router
 from routers.pantai import router as pantai_router
@@ -14,28 +17,60 @@ from routers.users import router as users_router
 from routers.evaluasi import router as evaluasi_router
 
 
-# ==========================================
-# KONFIGURASI APLIKASI FASTAPI
-# ==========================================
+# =========================================================
+# 1. LIFESPAN FASTAPI
+# =========================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Menjalankan proses pemuatan model ketika FastAPI startup.
+
+    Model hanya dimuat satu kali pada setiap proses backend.
+    """
+
+    print("[STARTUP] Memulai aplikasi FastAPI...", flush=True)
+
+    try:
+        muat_model()
+
+        print(
+            "[STARTUP] Model rekomendasi siap digunakan.",
+            flush=True,
+        )
+
+    except Exception as error:
+        print(
+            f"[STARTUP ERROR] Gagal memuat model: {error}",
+            flush=True,
+        )
+
+        raise
+
+    yield
+
+    print("[SHUTDOWN] Aplikasi FastAPI dihentikan.", flush=True)
+
+
+# =========================================================
+# 2. KONFIGURASI APLIKASI FASTAPI
+# =========================================================
 
 app = FastAPI(
     title="API Rekomendasi Pantai Malang Selatan",
     description="Backend sistem rekomendasi pantai",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
-# ==========================================
-# KONFIGURASI CORS
-# ==========================================
+# =========================================================
+# 3. KONFIGURASI CORS
+# =========================================================
 
 origins = [
     "http://localhost:5173",
-
-    # Domain utama Vercel
     "https://sistem-rekomendasi-pantai-malang-se.vercel.app",
-
-    # Domain deployment Vercel
     "https://sistem-rekomendasi-pantai-malang-selatan-51zs7iw2j.vercel.app",
 ]
 
@@ -50,9 +85,9 @@ app.add_middleware(
 )
 
 
-# ==========================================
-# ENDPOINT HOME
-# ==========================================
+# =========================================================
+# 4. ENDPOINT HOME
+# =========================================================
 
 @app.get("/")
 def home():
@@ -61,9 +96,9 @@ def home():
     }
 
 
-# ==========================================
-# TEST KONEKSI DATABASE
-# ==========================================
+# =========================================================
+# 5. TEST KONEKSI DATABASE
+# =========================================================
 
 @app.get("/db-test")
 def database_test():
@@ -84,9 +119,9 @@ def database_test():
         )
 
 
-# ==========================================
-# MENGAMBIL DATA PANTAI
-# ==========================================
+# =========================================================
+# 6. MENGAMBIL DATA PANTAI
+# =========================================================
 
 @app.get("/pantai")
 def get_pantai():
@@ -122,7 +157,6 @@ def get_pantai():
             if not nama:
                 continue
 
-            # Mengabaikan perbedaan huruf besar/kecil
             kunci = nama.casefold()
 
             if kunci not in pantai_unik:
@@ -203,9 +237,9 @@ def get_pantai():
         )
 
 
-# ==========================================
-# REGISTRASI ROUTER
-# ==========================================
+# =========================================================
+# 7. REGISTRASI ROUTER
+# =========================================================
 
 app.include_router(auth_router)
 app.include_router(pantai_router)

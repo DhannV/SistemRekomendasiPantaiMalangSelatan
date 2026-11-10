@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from routers.auth import require_admin
-from routers.pantai import pastikan_model_siap
+from services.rekomendasi import model_sudah_disiapkan
 
 from services.evaluasi import (
     ambil_semua_query,
@@ -343,10 +343,13 @@ def jalankan_evaluasi():
     try:
 
         # ---------------------------------------------
-        # 1. Pastikan model rekomendasi siap
+        # 1. Pastikan model rekomendasi sudah dimuat
         # ---------------------------------------------
 
-        pastikan_model_siap()
+        if not model_sudah_disiapkan():
+            raise RuntimeError(
+                "Model rekomendasi belum dimuat."
+            )
 
         # ---------------------------------------------
         # 2. Ambil query aktif

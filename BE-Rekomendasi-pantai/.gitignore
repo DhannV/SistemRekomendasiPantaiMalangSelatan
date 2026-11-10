@@ -13,3 +13,7 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
+
+# Model
+# Jangan abaikan folder models/
+# File model_rekomendasi.joblib harus masuk Git
