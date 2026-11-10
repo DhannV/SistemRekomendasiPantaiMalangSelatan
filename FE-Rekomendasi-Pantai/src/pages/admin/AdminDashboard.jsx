@@ -28,7 +28,9 @@ import {
 } from "lucide-react";
 
 // Sesuaikan dengan URL backend di file .env frontend.
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://sistemrekomendasipantaimalangselatan.onrender.com";
 
 // Sesuaikan path ini dengan route backend yang benar.
 const API_PATHS = {

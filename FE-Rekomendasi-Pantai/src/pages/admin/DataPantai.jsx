@@ -9,7 +9,7 @@ import {
   Users,
 } from "lucide-react";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "https://sistemrekomendasipantaimalangselatan.onrender.com";
 
 export default function DataPantai() {
   const [pantai, setPantai] = useState([]);
