@@ -31,22 +31,51 @@ def siapkan_model(data_ulasan, data_rating):
 
     waktu_total = time.perf_counter()
 
+    print("[MODEL] Memulai persiapan model...", flush=True)
+
     # 1. Pembentukan profil pantai
     mulai = time.perf_counter()
+
+    print("[MODEL] Memulai pembentukan profil pantai...", flush=True)
+
     profil = bangun_semua_profil(data_ulasan)
+
     waktu_profil = time.perf_counter() - mulai
+
+    print(
+        f"[MODEL] Profil pantai selesai: {waktu_profil:.2f} detik",
+        flush=True,
+    )
 
     # 2. Pembentukan TF-IDF
     mulai = time.perf_counter()
+
+    print("[MODEL] Memulai pembentukan TF-IDF...", flush=True)
+
     hasil_tfidf = bangun_semua_vektor_tfidf(
         profil["istilah_pantai"]
     )
+
     waktu_tfidf = time.perf_counter() - mulai
+
+    print(
+        f"[MODEL] TF-IDF selesai: {waktu_tfidf:.2f} detik",
+        flush=True,
+    )
 
     # 3. Perhitungan Bayesian Weighted Rating
     mulai = time.perf_counter()
+
+    print("[MODEL] Memulai perhitungan BWR...", flush=True)
+
     hasil_rating = hitung_bwr(data_rating)
+
     waktu_bwr = time.perf_counter() - mulai
+
+    print(
+        f"[MODEL] BWR selesai: {waktu_bwr:.2f} detik",
+        flush=True,
+    )
 
     # 4. Simpan model ke cache
     _MODEL_CACHE = {
