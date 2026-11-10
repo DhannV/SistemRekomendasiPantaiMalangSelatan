@@ -2,36 +2,57 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+
+from database import engine, test_connection
+
 from routers.auth import router as auth_router
 from routers.pantai import router as pantai_router
 from routers import search_history
 from routers.users import router as users_router
 from routers.evaluasi import router as evaluasi_router
 
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 
-from database import engine, test_connection
+# ==========================================
+# KONFIGURASI APLIKASI FASTAPI
+# ==========================================
 
 app = FastAPI(
     title="API Rekomendasi Pantai Malang Selatan",
     description="Backend sistem rekomendasi pantai",
     version="1.0.0",
 )
+
+
+# ==========================================
+# KONFIGURASI CORS
+# ==========================================
+
+origins = [
+    "http://localhost:5173",
+
+    # Domain utama Vercel
+    "https://sistem-rekomendasi-pantai-malang-se.vercel.app",
+
+    # Domain deployment Vercel
+    "https://sistem-rekomendasi-pantai-malang-selatan-51zs7iw2j.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        # Domain utama Vercel
-        "https://sistem-rekomendasi-pantai-malang-se.vercel.app",
-        # Domain deployment Vercel
-        "https://sistem-rekomendasi-pantai-malang-selatan-51zs7iw2j.vercel.app",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
+
+# ==========================================
+# ENDPOINT HOME
+# ==========================================
 
 @app.get("/")
 def home():
@@ -39,6 +60,10 @@ def home():
         "message": "API Rekomendasi Pantai berhasil dijalankan"
     }
 
+
+# ==========================================
+# TEST KONEKSI DATABASE
+# ==========================================
 
 @app.get("/db-test")
 def database_test():
@@ -59,10 +84,15 @@ def database_test():
         )
 
 
+# ==========================================
+# MENGAMBIL DATA PANTAI
+# ==========================================
+
 @app.get("/pantai")
 def get_pantai():
     try:
         with engine.connect() as connection:
+
             result = connection.execute(
                 text("""
                     SELECT
@@ -86,6 +116,7 @@ def get_pantai():
         pantai_unik = {}
 
         for item in data:
+
             nama = str(item.get("pantai") or "").strip()
 
             if not nama:
@@ -136,6 +167,7 @@ def get_pantai():
         hasil = []
 
         for grup in pantai_unik.values():
+
             daftar_rating = grup["rating_list"]
 
             rata_rata_rating = (
@@ -170,9 +202,13 @@ def get_pantai():
             detail="Gagal mengambil data pantai dari database."
         )
 
-   
-app.include_router(pantai_router)
+
+# ==========================================
+# REGISTRASI ROUTER
+# ==========================================
+
 app.include_router(auth_router)
+app.include_router(pantai_router)
 app.include_router(search_history.router)
 app.include_router(users_router)
 app.include_router(evaluasi_router)
