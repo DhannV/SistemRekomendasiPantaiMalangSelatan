@@ -123,35 +123,72 @@ def database_test():
 # 6. MENGAMBIL DATA PANTAI
 # =========================================================
 
+
 @app.get("/pantai")
 def get_pantai():
     try:
         with engine.connect() as connection:
 
-            result = connection.execute(
+            # Mengambil seluruh pantai yang masih aktif.
+            result_master = connection.execute(
+                text("""
+                    SELECT nama_pantai
+                    FROM public.pantai_master
+                    WHERE nama_pantai IS NOT NULL
+                      AND TRIM(nama_pantai) <> ''
+                    ORDER BY nama_pantai
+                """)
+            )
+
+            daftar_master = [
+                dict(row)
+                for row in result_master.mappings().all()
+            ]
+
+            # Mengambil ulasan hanya untuk pantai yang masih aktif.
+            result_ulasan = connection.execute(
                 text("""
                     SELECT
-                        pantai,
-                        "user",
-                        teks,
-                        rating
-                    FROM public.dataset_pantai
-                    WHERE pantai IS NOT NULL
-                      AND TRIM(pantai) <> ''
-                    ORDER BY pantai
+                        dp.pantai,
+                        dp."user",
+                        dp.teks,
+                        dp.rating
+                    FROM public.dataset_pantai dp
+                    INNER JOIN public.pantai_master pm
+                        ON LOWER(TRIM(dp.pantai)) =
+                           LOWER(TRIM(pm.nama_pantai))
+                    WHERE dp.pantai IS NOT NULL
+                      AND TRIM(dp.pantai) <> ''
+                    ORDER BY dp.pantai
                 """)
             )
 
             data = [
                 dict(row)
-                for row in result.mappings().all()
+                for row in result_ulasan.mappings().all()
             ]
 
-        # Mengelompokkan data berdasarkan nama pantai
+        # Membuat kelompok berdasarkan pantai master.
         pantai_unik = {}
 
-        for item in data:
+        for item in daftar_master:
+            nama = str(item.get("nama_pantai") or "").strip()
 
+            if not nama:
+                continue
+
+            kunci = nama.casefold()
+
+            pantai_unik[kunci] = {
+                "pantai": nama,
+                "rating_list": [],
+                "ulasan": [],
+                "jumlah_ulasan": 0,
+                "users": [],
+            }
+
+        # Memasukkan ulasan ke kelompok pantai yang sesuai.
+        for item in data:
             nama = str(item.get("pantai") or "").strip()
 
             if not nama:
@@ -160,17 +197,11 @@ def get_pantai():
             kunci = nama.casefold()
 
             if kunci not in pantai_unik:
-                pantai_unik[kunci] = {
-                    "pantai": nama,
-                    "rating_list": [],
-                    "ulasan": [],
-                    "jumlah_ulasan": 0,
-                    "users": [],
-                }
+                continue
 
             grup = pantai_unik[kunci]
 
-            # Mengumpulkan rating yang valid
+            # Mengumpulkan rating yang valid.
             rating = item.get("rating")
 
             if rating is not None:
@@ -183,13 +214,13 @@ def get_pantai():
                 except (TypeError, ValueError):
                     pass
 
-            # Mengumpulkan teks ulasan
+            # Mengumpulkan teks ulasan.
             teks_ulasan = str(item.get("teks") or "").strip()
 
             if teks_ulasan:
                 grup["ulasan"].append(teks_ulasan)
 
-            # Mengumpulkan nama user
+            # Mengumpulkan nama user.
             nama_user = str(item.get("user") or "").strip()
 
             if nama_user and nama_user not in grup["users"]:
@@ -197,11 +228,10 @@ def get_pantai():
 
             grup["jumlah_ulasan"] += 1
 
-        # Membentuk hasil akhir satu baris per pantai
+        # Membentuk hasil akhir.
         hasil = []
 
         for grup in pantai_unik.values():
-
             daftar_rating = grup["rating_list"]
 
             rata_rata_rating = (
@@ -218,7 +248,6 @@ def get_pantai():
                 "jumlah_ulasan": grup["jumlah_ulasan"],
             })
 
-        # Mengurutkan nama pantai secara alfabetis
         hasil.sort(
             key=lambda item: item["pantai"].casefold()
         )
@@ -230,11 +259,14 @@ def get_pantai():
             "data": hasil,
         }
 
-    except SQLAlchemyError:
+    except SQLAlchemyError as error:
+        print(f"[ERROR GET PANTAI] {error}", flush=True)
+
         raise HTTPException(
             status_code=500,
             detail="Gagal mengambil data pantai dari database."
         )
+
 
 
 # =========================================================

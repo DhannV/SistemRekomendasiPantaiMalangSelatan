@@ -57,29 +57,33 @@ class TambahPantaiRequest(BaseModel):
 
 
 # =========================================================
-# 3. ENDPOINT DAFTAR PANTAI
+# 3. HELPER DAFTAR PANTAI AKTIF
 # =========================================================
 
-@router.get("/daftar")
-def get_daftar_pantai():
-    """
-    Mengambil daftar nama pantai dari pantai_master.
-    """
-
+def ambil_daftar_pantai_aktif():
     query = text("""
         SELECT nama_pantai
         FROM public.pantai_master
         ORDER BY nama_pantai ASC
     """)
 
-    try:
-        with engine.connect() as connection:
-            hasil = connection.execute(query).mappings().all()
+    with engine.connect() as connection:
+        hasil = connection.execute(query).mappings().all()
 
-        daftar = [
-            row["nama_pantai"]
-            for row in hasil
-        ]
+    return [
+        row["nama_pantai"]
+        for row in hasil
+    ]
+
+
+# =========================================================
+# 4. ENDPOINT DAFTAR PANTAI
+# =========================================================
+
+@router.get("/daftar")
+def get_daftar_pantai():
+    try:
+        daftar = ambil_daftar_pantai_aktif()
 
         return {
             "status": "success",
@@ -87,11 +91,8 @@ def get_daftar_pantai():
             "data": daftar,
         }
 
-    except SQLAlchemyError:
-        print(
-            "[ERROR] Gagal mengambil daftar pantai.",
-            flush=True,
-        )
+    except SQLAlchemyError as error:
+        print(f"[ERROR] Daftar pantai: {error}", flush=True)
 
         raise HTTPException(
             status_code=500,
@@ -100,17 +101,13 @@ def get_daftar_pantai():
 
 
 # =========================================================
-# 4. ENDPOINT ADMIN - MENGAMBIL DAFTAR PANTAI
+# 5. ENDPOINT ADMIN - DAFTAR PANTAI
 # =========================================================
 
 @router.get("/admin/daftar")
 def get_daftar_pantai_admin(
     current_user: dict = Depends(require_admin),
 ):
-    """
-    Mengambil daftar pantai beserta ID untuk keperluan CRUD admin.
-    """
-
     query = text("""
         SELECT
             id,
@@ -135,11 +132,8 @@ def get_daftar_pantai_admin(
             "data": data,
         }
 
-    except SQLAlchemyError:
-        print(
-            "[ERROR] Gagal mengambil data pantai admin.",
-            flush=True,
-        )
+    except SQLAlchemyError as error:
+        print(f"[ERROR] Daftar pantai admin: {error}", flush=True)
 
         raise HTTPException(
             status_code=500,
@@ -148,7 +142,7 @@ def get_daftar_pantai_admin(
 
 
 # =========================================================
-# 5. ENDPOINT ADMIN - TAMBAH PANTAI
+# 6. ENDPOINT ADMIN - TAMBAH PANTAI
 # =========================================================
 
 @router.post("/admin", status_code=201)
@@ -156,10 +150,6 @@ def tambah_pantai(
     permintaan: TambahPantaiRequest,
     current_user: dict = Depends(require_admin),
 ):
-    """
-    Menambahkan pantai baru ke pantai_master.
-    """
-
     nama_pantai = permintaan.nama_pantai.strip()
 
     if not nama_pantai:
@@ -182,7 +172,7 @@ def tambah_pantai(
             ).mappings().one()
 
         print(
-            f"[ADMIN] Pantai berhasil ditambahkan: {nama_pantai}",
+            f"[ADMIN] Pantai ditambahkan: {nama_pantai}",
             flush=True,
         )
 
@@ -198,11 +188,8 @@ def tambah_pantai(
             detail="Nama pantai sudah terdaftar.",
         )
 
-    except SQLAlchemyError:
-        print(
-            "[ERROR] Gagal menambahkan pantai.",
-            flush=True,
-        )
+    except SQLAlchemyError as error:
+        print(f"[ERROR] Tambah pantai: {error}", flush=True)
 
         raise HTTPException(
             status_code=500,
@@ -211,7 +198,7 @@ def tambah_pantai(
 
 
 # =========================================================
-# 6. ENDPOINT ADMIN - HAPUS PANTAI
+# 7. ENDPOINT ADMIN - HAPUS PANTAI
 # =========================================================
 
 @router.delete("/admin/{pantai_id}")
@@ -219,12 +206,6 @@ def hapus_pantai(
     pantai_id: int,
     current_user: dict = Depends(require_admin),
 ):
-    """
-    Menghapus pantai berdasarkan ID dari pantai_master.
-
-    Tidak menghapus data dari dataset_pantai maupun data_pantai.
-    """
-
     query = text("""
         DELETE FROM public.pantai_master
         WHERE id = :pantai_id
@@ -245,24 +226,24 @@ def hapus_pantai(
                 )
 
         print(
-            f"[ADMIN] Pantai berhasil dihapus: {hasil['nama_pantai']}",
+            f"[ADMIN] Pantai dihapus: {hasil['nama_pantai']}",
             flush=True,
         )
 
         return {
             "status": "success",
-            "message": "Pantai berhasil dihapus.",
+            "message": (
+                "Pantai berhasil dihapus dari daftar aktif. "
+                "Data ulasan dan koordinat tetap tersimpan."
+            ),
             "data": dict(hasil),
         }
 
     except HTTPException:
         raise
 
-    except SQLAlchemyError:
-        print(
-            "[ERROR] Gagal menghapus pantai.",
-            flush=True,
-        )
+    except SQLAlchemyError as error:
+        print(f"[ERROR] Hapus pantai: {error}", flush=True)
 
         raise HTTPException(
             status_code=500,
@@ -271,37 +252,31 @@ def hapus_pantai(
 
 
 # =========================================================
-# 7. ENDPOINT REKOMENDASI PANTAI
+# 8. ENDPOINT REKOMENDASI PANTAI
 # =========================================================
 
 @router.post("/rekomendasi")
 def post_rekomendasi_pantai(
     permintaan: PermintaanRekomendasi,
 ):
-
     waktu_mulai = time.perf_counter()
 
     try:
-
         if not model_sudah_disiapkan():
-            print(
-                "[ERROR] Model rekomendasi belum tersedia.",
-                flush=True,
-            )
-
             raise HTTPException(
                 status_code=503,
-                detail=(
-                    "Model rekomendasi belum tersedia. "
-                    "Silakan coba beberapa saat lagi."
-                ),
+                detail="Model rekomendasi belum tersedia.",
             )
+
+        # Mengambil pantai yang masih aktif di database.
+        daftar_pantai_aktif = ambil_daftar_pantai_aktif()
 
         waktu_model_siap = time.perf_counter()
 
         hasil = rekomendasikan_pantai(
             query=permintaan.query,
             top_n=permintaan.top_n,
+            daftar_pantai_aktif=daftar_pantai_aktif,
         )
 
         waktu_selesai = time.perf_counter()
@@ -310,7 +285,7 @@ def post_rekomendasi_pantai(
             f"[PERFORMA] Rekomendasi selesai | "
             f"Query: {permintaan.query!r} | "
             f"Jumlah hasil: {hasil['jumlah_hasil']} | "
-            f"Pemeriksaan model: "
+            f"Pengambilan daftar aktif: "
             f"{waktu_model_siap - waktu_mulai:.4f} detik | "
             f"Perhitungan query: "
             f"{waktu_selesai - waktu_model_siap:.4f} detik | "
@@ -326,6 +301,14 @@ def post_rekomendasi_pantai(
     except HTTPException:
         raise
 
+    except SQLAlchemyError as error:
+        print(f"[ERROR] Database rekomendasi: {error}", flush=True)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Gagal mengambil daftar pantai aktif.",
+        )
+
     except ValueError as error:
         raise HTTPException(
             status_code=400,
@@ -333,10 +316,7 @@ def post_rekomendasi_pantai(
         )
 
     except RuntimeError as error:
-        print(
-            f"[ERROR] Model rekomendasi: {error}",
-            flush=True,
-        )
+        print(f"[ERROR] Model rekomendasi: {error}", flush=True)
 
         raise HTTPException(
             status_code=503,
@@ -348,27 +328,25 @@ def post_rekomendasi_pantai(
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Terjadi kesalahan saat memproses "
-                "rekomendasi pantai."
-            ),
+            detail="Terjadi kesalahan saat memproses rekomendasi pantai.",
         )
 
 
 # =========================================================
-# 8. ENDPOINT KOORDINAT PANTAI
+# 9. ENDPOINT KOORDINAT PANTAI
 # =========================================================
 
 @router.get("/koordinat")
 def get_koordinat_pantai():
-
     query = text("""
         SELECT
-            pantai,
-            latitude,
-            longitude
-        FROM public.data_pantai
-        ORDER BY pantai ASC
+            dp.pantai,
+            dp.latitude,
+            dp.longitude
+        FROM public.data_pantai dp
+        INNER JOIN public.pantai_master pm
+            ON LOWER(TRIM(dp.pantai)) = LOWER(TRIM(pm.nama_pantai))
+        ORDER BY dp.pantai ASC
     """)
 
     try:
@@ -398,13 +376,10 @@ def get_koordinat_pantai():
             "data": data,
         }
 
-    except SQLAlchemyError:
-        print(
-            "[ERROR] Gagal mengambil koordinat pantai.",
-            flush=True,
-        )
+    except SQLAlchemyError as error:
+        print(f"[ERROR] Koordinat pantai: {error}", flush=True)
 
         raise HTTPException(
             status_code=500,
-            detail="Gagal mengambil koordinat pantai dari database.",
+            detail="Gagal mengambil koordinat pantai.",
         )
