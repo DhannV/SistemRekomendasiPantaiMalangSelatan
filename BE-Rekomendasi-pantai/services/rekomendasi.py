@@ -28,10 +28,18 @@ _MODEL_CACHE = None
 # =========================================================
 
 def model_sudah_disiapkan():
+    """
+    Memeriksa apakah model rekomendasi sudah dimuat.
+    """
+
     return _MODEL_CACHE is not None
 
 
 def simpan_model_ke_memori(model):
+    """
+    Menyimpan model rekomendasi ke memori.
+    """
+
     global _MODEL_CACHE
 
     if not isinstance(model, dict):
@@ -54,19 +62,29 @@ def simpan_model_ke_memori(model):
         )
 
     if not isinstance(model["vektor_pantai"], dict):
-        raise TypeError("vektor_pantai harus berupa dictionary.")
+        raise TypeError(
+            "vektor_pantai harus berupa dictionary."
+        )
 
     if not isinstance(model["kosakata"], list):
-        raise TypeError("kosakata harus berupa list.")
+        raise TypeError(
+            "kosakata harus berupa list."
+        )
 
     if not isinstance(model["idf"], dict):
-        raise TypeError("idf harus berupa dictionary.")
+        raise TypeError(
+            "idf harus berupa dictionary."
+        )
 
     if not isinstance(model["skor_bwr"], dict):
-        raise TypeError("skor_bwr harus berupa dictionary.")
+        raise TypeError(
+            "skor_bwr harus berupa dictionary."
+        )
 
     if not model["vektor_pantai"]:
-        raise ValueError("Model tidak memiliki data vektor pantai.")
+        raise ValueError(
+            "Model tidak memiliki data vektor pantai."
+        )
 
     _MODEL_CACHE = model
 
@@ -78,11 +96,18 @@ def simpan_model_ke_memori(model):
 
 
 def hapus_model_dari_memori():
+    """
+    Menghapus model dari memori.
+    """
+
     global _MODEL_CACHE
 
     _MODEL_CACHE = None
 
-    print("[MODEL] Cache model berhasil dikosongkan.", flush=True)
+    print(
+        "[MODEL] Cache model berhasil dikosongkan.",
+        flush=True,
+    )
 
 
 # =========================================================
@@ -90,9 +115,25 @@ def hapus_model_dari_memori():
 # =========================================================
 
 def bangun_model(data_ulasan, data_rating):
+    """
+    Membentuk model rekomendasi Hybrid.
+
+    Tahapan:
+    1. Pembentukan profil pantai.
+    2. Pembentukan vektor TF-IDF.
+    3. Perhitungan Bayesian Weighted Rating.
+    """
+
     waktu_total = time.perf_counter()
 
-    print("[MODEL] Memulai pembentukan model...", flush=True)
+    print(
+        "[MODEL] Memulai pembentukan model...",
+        flush=True,
+    )
+
+    # ---------------------------------------------
+    # 1. Pembentukan profil pantai
+    # ---------------------------------------------
 
     mulai = time.perf_counter()
 
@@ -104,6 +145,10 @@ def bangun_model(data_ulasan, data_rating):
         f"[MODEL] Profil pantai selesai: {waktu_profil:.2f} detik",
         flush=True,
     )
+
+    # ---------------------------------------------
+    # 2. Pembentukan TF-IDF
+    # ---------------------------------------------
 
     mulai = time.perf_counter()
 
@@ -118,6 +163,10 @@ def bangun_model(data_ulasan, data_rating):
         flush=True,
     )
 
+    # ---------------------------------------------
+    # 3. Perhitungan BWR
+    # ---------------------------------------------
+
     mulai = time.perf_counter()
 
     hasil_rating = hitung_bwr(data_rating)
@@ -128,6 +177,10 @@ def bangun_model(data_ulasan, data_rating):
         f"[MODEL] BWR selesai: {waktu_bwr:.2f} detik",
         flush=True,
     )
+
+    # ---------------------------------------------
+    # 4. Menyusun model
+    # ---------------------------------------------
 
     model = {
         "versi_model": VERSI_MODEL,
@@ -148,13 +201,50 @@ def bangun_model(data_ulasan, data_rating):
         flush=True,
     )
 
-    print("[MODEL] Pembentukan model berhasil.", flush=True)
+    print(
+        "[MODEL] Pembentukan model berhasil.",
+        flush=True,
+    )
 
     return model
 
 
 # =========================================================
-# 4. PROSES REKOMENDASI PANTAI
+# 4. HELPER RESPONS KOSONG
+# =========================================================
+
+def buat_respons_kosong(
+    query,
+    query_bersih,
+    top_n,
+    alpha,
+    gerbang,
+    normalisasi_cosine,
+    peringatan,
+):
+    """
+    Membuat respons ketika tidak ada rekomendasi.
+    """
+
+    return {
+        "query": query,
+        "query_bersih": query_bersih,
+        "jumlah_hasil": 0,
+        "parameter": {
+            "alpha": alpha,
+            "bobot_cosine": alpha,
+            "bobot_bwr": 1 - alpha,
+            "top_n": top_n,
+            "gerbang": gerbang,
+            "normalisasi_cosine": normalisasi_cosine,
+        },
+        "peringatan": peringatan,
+        "data": [],
+    }
+
+
+# =========================================================
+# 5. PROSES REKOMENDASI PANTAI
 # =========================================================
 
 def rekomendasikan_pantai(
@@ -168,17 +258,26 @@ def rekomendasikan_pantai(
     """
     Menghasilkan rekomendasi Hybrid CBF dan Rating Aggregation.
 
-    Kandidat rekomendasi dibatasi oleh daftar pantai aktif
-    jika daftar_pantai_aktif diberikan.
+    Rumus:
+    Skor Akhir = (Alpha * Skor CBF)
+                 + ((1 - Alpha) * Skor BWR)
+
+    Kandidat rekomendasi dibatasi berdasarkan daftar
+    pantai aktif jika daftar_pantai_aktif diberikan.
     """
 
-    # -----------------------------------------------------
-    # 1. Validasi input
-    # -----------------------------------------------------
+    # =====================================================
+    # 1. VALIDASI INPUT
+    # =====================================================
 
     if not isinstance(query, str) or not query.strip():
         raise ValueError(
             "Kata kunci pencarian tidak boleh kosong."
+        )
+
+    if not isinstance(top_n, int) or top_n < 1:
+        raise ValueError(
+            "top_n harus berupa bilangan bulat minimal 1."
         )
 
     if not 0 <= alpha <= 1:
@@ -186,14 +285,9 @@ def rekomendasikan_pantai(
             "Alpha harus berada di antara 0 dan 1."
         )
 
-    if top_n < 0:
-        raise ValueError(
-            "top_n tidak boleh negatif."
-        )
-
-    # -----------------------------------------------------
-    # 2. Memastikan model tersedia
-    # -----------------------------------------------------
+    # =====================================================
+    # 2. MEMASTIKAN MODEL TERSEDIA
+    # =====================================================
 
     if not model_sudah_disiapkan():
         raise RuntimeError(
@@ -207,9 +301,9 @@ def rekomendasikan_pantai(
     idf = model["idf"]
     bwr_normal = model["skor_bwr"]
 
-    # -----------------------------------------------------
-    # 3. Memfilter pantai aktif
-    # -----------------------------------------------------
+    # =====================================================
+    # 3. MEMFILTER PANTAI AKTIF
+    # =====================================================
 
     if daftar_pantai_aktif is None:
         vektor_aktif = dict(vektor_pantai)
@@ -224,57 +318,46 @@ def rekomendasikan_pantai(
         vektor_aktif = {
             pantai: vektor
             for pantai, vektor in vektor_pantai.items()
-            if pantai.strip().casefold() in nama_aktif
+            if str(pantai).strip().casefold() in nama_aktif
         }
 
-    # Tidak ada pantai aktif yang cocok dengan model.
     if not vektor_aktif:
-        return {
-            "query": query,
-            "query_bersih": proses_akhir(query),
-            "jumlah_hasil": 0,
-            "parameter": {
-                "alpha": alpha,
-                "bobot_cosine": alpha,
-                "bobot_bwr": 1 - alpha,
-                "top_n": top_n,
-                "gerbang": gerbang,
-                "normalisasi_cosine": normalisasi_cosine,
-            },
-            "peringatan": (
-                "Belum ada pantai aktif yang tersedia di model rekomendasi."
+        return buat_respons_kosong(
+            query=query,
+            query_bersih=proses_akhir(query),
+            top_n=top_n,
+            alpha=alpha,
+            gerbang=gerbang,
+            normalisasi_cosine=normalisasi_cosine,
+            peringatan=(
+                "Belum ada pantai aktif yang tersedia "
+                "di model rekomendasi."
             ),
-            "data": [],
-        }
+        )
 
-    # -----------------------------------------------------
-    # 4. Preprocessing query
-    # -----------------------------------------------------
+    # =====================================================
+    # 4. PREPROCESSING QUERY
+    # =====================================================
 
     query_final = proses_akhir(query)
 
     if not query_final:
-        return {
-            "query": query,
-            "query_bersih": query_final,
-            "jumlah_hasil": 0,
-            "parameter": {
-                "alpha": alpha,
-                "bobot_cosine": alpha,
-                "bobot_bwr": 1 - alpha,
-                "top_n": top_n,
-                "gerbang": gerbang,
-                "normalisasi_cosine": normalisasi_cosine,
-            },
-            "peringatan": (
-                "Query tidak menghasilkan teks setelah preprocessing."
+        return buat_respons_kosong(
+            query=query,
+            query_bersih=query_final,
+            top_n=top_n,
+            alpha=alpha,
+            gerbang=gerbang,
+            normalisasi_cosine=normalisasi_cosine,
+            peringatan=(
+                "Query tidak menghasilkan teks "
+                "setelah preprocessing."
             ),
-            "data": [],
-        }
+        )
 
-    # -----------------------------------------------------
-    # 5. Membuat vektor query TF-IDF
-    # -----------------------------------------------------
+    # =====================================================
+    # 5. MEMBUAT VEKTOR QUERY TF-IDF
+    # =====================================================
 
     vektor_query = buat_vektor_query(
         query_final,
@@ -282,9 +365,9 @@ def rekomendasikan_pantai(
         idf,
     )
 
-    # -----------------------------------------------------
-    # 6. Menghitung cosine similarity
-    # -----------------------------------------------------
+    # =====================================================
+    # 6. MENGHITUNG COSINE SIMILARITY
+    # =====================================================
 
     skor_cosine = {
         pantai: hitung_cosine_similarity(
@@ -294,26 +377,30 @@ def rekomendasikan_pantai(
         for pantai, vektor in vektor_aktif.items()
     }
 
-    # -----------------------------------------------------
-    # 7. Memeriksa kecocokan teks
-    # -----------------------------------------------------
+    # =====================================================
+    # 7. MEMERIKSA KECOCOKAN TEKS
+    # =====================================================
 
     ada_kecocokan_teks = (
         bool(vektor_query)
-        and any(skor > 0 for skor in skor_cosine.values())
+        and any(
+            skor > 0
+            for skor in skor_cosine.values()
+        )
     )
 
     peringatan = None
 
     if not ada_kecocokan_teks:
         peringatan = (
-            "Tidak ada istilah query yang cocok dengan kosakata TF-IDF. "
-            "Hasil rekomendasi ditentukan berdasarkan rating."
+            "Tidak ada istilah query yang cocok dengan "
+            "kosakata TF-IDF. Hasil rekomendasi "
+            "ditentukan berdasarkan rating."
         )
 
-    # -----------------------------------------------------
-    # 8. Menentukan kandidat
-    # -----------------------------------------------------
+    # =====================================================
+    # 8. MENENTUKAN KANDIDAT
+    # =====================================================
 
     if gerbang and ada_kecocokan_teks:
         kandidat = {
@@ -321,12 +408,13 @@ def rekomendasikan_pantai(
             for pantai, skor in skor_cosine.items()
             if skor > 0
         }
+
     else:
         kandidat = dict(skor_cosine)
 
-    # -----------------------------------------------------
-    # 9. Normalisasi cosine similarity
-    # -----------------------------------------------------
+    # =====================================================
+    # 9. NORMALISASI COSINE SIMILARITY
+    # =====================================================
 
     skor_maks = max(
         skor_cosine.values(),
@@ -334,27 +422,43 @@ def rekomendasikan_pantai(
     )
 
     if normalisasi_cosine:
+
         if skor_maks > 0:
             cosine_normal = {
                 pantai: skor / skor_maks
                 for pantai, skor in kandidat.items()
             }
+
         else:
             cosine_normal = {
                 pantai: 0.0
                 for pantai in kandidat
             }
+
     else:
         cosine_normal = dict(kandidat)
 
-    # -----------------------------------------------------
-    # 10. Menghitung skor hybrid
-    # -----------------------------------------------------
+    # =====================================================
+    # 10. MEMBUAT PETA SKOR BWR
+    # =====================================================
+
+    bwr_lookup = {
+        str(nama).strip().casefold(): skor
+        for nama, skor in bwr_normal.items()
+    }
+
+    # =====================================================
+    # 11. MENGHITUNG SKOR HYBRID
+    # =====================================================
 
     hasil_akhir = []
 
     for pantai, skor_cos in cosine_normal.items():
-        skor_rating = bwr_normal.get(pantai, 0.0)
+
+        skor_rating = bwr_lookup.get(
+            str(pantai).strip().casefold(),
+            0.0,
+        )
 
         skor_hybrid = (
             alpha * skor_cos
@@ -368,9 +472,9 @@ def rekomendasikan_pantai(
             "skor_akhir": round(skor_hybrid, 6),
         })
 
-    # -----------------------------------------------------
-    # 11. Mengurutkan hasil rekomendasi
-    # -----------------------------------------------------
+    # =====================================================
+    # 12. MENGURUTKAN HASIL REKOMENDASI
+    # =====================================================
 
     hasil_akhir.sort(
         key=lambda item: (
@@ -383,9 +487,9 @@ def rekomendasikan_pantai(
 
     hasil_akhir = hasil_akhir[:top_n]
 
-    # -----------------------------------------------------
-    # 12. Menyusun respons
-    # -----------------------------------------------------
+    # =====================================================
+    # 13. MENYUSUN RESPONS
+    # =====================================================
 
     respons = {
         "query": query,

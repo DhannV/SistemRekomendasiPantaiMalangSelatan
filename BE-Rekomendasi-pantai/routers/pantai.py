@@ -52,15 +52,30 @@ class TambahPantaiRequest(BaseModel):
         ...,
         min_length=1,
         max_length=200,
-        description="Nama pantai yang akan ditambahkan",
+        description="Nama pantai",
+    )
+
+    deskripsi: str | None = Field(
+        default=None,
+        description="Deskripsi pantai",
+    )
+
+    foto_url: str | None = Field(
+        default=None,
+        description="URL foto pantai",
     )
 
 
 # =========================================================
-# 3. HELPER DAFTAR PANTAI AKTIF
+# 3. HELPER DATABASE
 # =========================================================
 
 def ambil_daftar_pantai_aktif():
+    """
+    Mengambil seluruh nama pantai yang terdaftar
+    di tabel pantai_master.
+    """
+
     query = text("""
         SELECT nama_pantai
         FROM public.pantai_master
@@ -73,7 +88,45 @@ def ambil_daftar_pantai_aktif():
     return [
         row["nama_pantai"]
         for row in hasil
+        if row["nama_pantai"]
     ]
+
+
+def ambil_semua_detail_pantai():
+    """
+    Mengambil nama, deskripsi, dan foto seluruh pantai.
+
+    Data digunakan untuk melengkapi hasil rekomendasi
+    tanpa melakukan query berulang.
+    """
+
+    query = text("""
+        SELECT
+            nama_pantai,
+            deskripsi,
+            foto_url
+        FROM public.pantai_master
+    """)
+
+    with engine.connect() as connection:
+        hasil = connection.execute(query).mappings().all()
+
+    detail = {}
+
+    for row in hasil:
+        nama = row["nama_pantai"]
+
+        if not nama:
+            continue
+
+        kunci = str(nama).strip().casefold()
+
+        detail[kunci] = {
+            "deskripsi": row["deskripsi"],
+            "foto_url": row["foto_url"],
+        }
+
+    return detail
 
 
 # =========================================================
@@ -92,7 +145,10 @@ def get_daftar_pantai():
         }
 
     except SQLAlchemyError as error:
-        print(f"[ERROR] Daftar pantai: {error}", flush=True)
+        print(
+            f"[ERROR] Daftar pantai: {error}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=500,
@@ -112,14 +168,18 @@ def get_daftar_pantai_admin(
         SELECT
             id,
             nama_pantai,
-            created_at
+            created_at,
+            deskripsi,
+            foto_url
         FROM public.pantai_master
         ORDER BY nama_pantai ASC
     """)
 
     try:
         with engine.connect() as connection:
-            hasil = connection.execute(query).mappings().all()
+            hasil = connection.execute(
+                query
+            ).mappings().all()
 
         data = [
             dict(row)
@@ -133,7 +193,10 @@ def get_daftar_pantai_admin(
         }
 
     except SQLAlchemyError as error:
-        print(f"[ERROR] Daftar pantai admin: {error}", flush=True)
+        print(
+            f"[ERROR] Daftar pantai admin: {error}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=500,
@@ -159,16 +222,33 @@ def tambah_pantai(
         )
 
     query = text("""
-        INSERT INTO public.pantai_master (nama_pantai)
-        VALUES (:nama_pantai)
-        RETURNING id, nama_pantai, created_at
+        INSERT INTO public.pantai_master (
+            nama_pantai,
+            deskripsi,
+            foto_url
+        )
+        VALUES (
+            :nama_pantai,
+            :deskripsi,
+            :foto_url
+        )
+        RETURNING
+            id,
+            nama_pantai,
+            created_at,
+            deskripsi,
+            foto_url
     """)
 
     try:
         with engine.begin() as connection:
             hasil = connection.execute(
                 query,
-                {"nama_pantai": nama_pantai},
+                {
+                    "nama_pantai": nama_pantai,
+                    "deskripsi": permintaan.deskripsi,
+                    "foto_url": permintaan.foto_url,
+                },
             ).mappings().one()
 
         print(
@@ -189,7 +269,10 @@ def tambah_pantai(
         )
 
     except SQLAlchemyError as error:
-        print(f"[ERROR] Tambah pantai: {error}", flush=True)
+        print(
+            f"[ERROR] Tambah pantai: {error}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=500,
@@ -243,7 +326,10 @@ def hapus_pantai(
         raise
 
     except SQLAlchemyError as error:
-        print(f"[ERROR] Hapus pantai: {error}", flush=True)
+        print(
+            f"[ERROR] Hapus pantai: {error}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=500,
@@ -262,16 +348,27 @@ def post_rekomendasi_pantai(
     waktu_mulai = time.perf_counter()
 
     try:
+        # ---------------------------------------------
+        # 1. Memastikan model tersedia
+        # ---------------------------------------------
+
         if not model_sudah_disiapkan():
             raise HTTPException(
                 status_code=503,
                 detail="Model rekomendasi belum tersedia.",
             )
 
-        # Mengambil pantai yang masih aktif di database.
+        # ---------------------------------------------
+        # 2. Mengambil daftar pantai aktif
+        # ---------------------------------------------
+
         daftar_pantai_aktif = ambil_daftar_pantai_aktif()
 
-        waktu_model_siap = time.perf_counter()
+        waktu_database = time.perf_counter()
+
+        # ---------------------------------------------
+        # 3. Menghitung rekomendasi
+        # ---------------------------------------------
 
         hasil = rekomendasikan_pantai(
             query=permintaan.query,
@@ -279,19 +376,52 @@ def post_rekomendasi_pantai(
             daftar_pantai_aktif=daftar_pantai_aktif,
         )
 
+        # ---------------------------------------------
+        # 4. Mengambil detail pantai
+        # ---------------------------------------------
+
+        detail_pantai = ambil_semua_detail_pantai()
+
+        # ---------------------------------------------
+        # 5. Menggabungkan detail dengan rekomendasi
+        # ---------------------------------------------
+
+        for item in hasil.get("data", []):
+            nama_key = str(
+                item["pantai"]
+            ).strip().casefold()
+
+            detail = detail_pantai.get(
+                nama_key,
+                {
+                    "deskripsi": None,
+                    "foto_url": None,
+                },
+            )
+
+            item["deskripsi"] = detail["deskripsi"]
+            item["foto_url"] = detail["foto_url"]
+
         waktu_selesai = time.perf_counter()
+
+        # ---------------------------------------------
+        # 6. Log performa
+        # ---------------------------------------------
 
         print(
             f"[PERFORMA] Rekomendasi selesai | "
             f"Query: {permintaan.query!r} | "
             f"Jumlah hasil: {hasil['jumlah_hasil']} | "
-            f"Pengambilan daftar aktif: "
-            f"{waktu_model_siap - waktu_mulai:.4f} detik | "
-            f"Perhitungan query: "
-            f"{waktu_selesai - waktu_model_siap:.4f} detik | "
+            f"Database: {waktu_database - waktu_mulai:.4f} detik | "
+            f"Perhitungan dan detail: "
+            f"{waktu_selesai - waktu_database:.4f} detik | "
             f"Total: {waktu_selesai - waktu_mulai:.4f} detik",
             flush=True,
         )
+
+        # ---------------------------------------------
+        # 7. Respons API
+        # ---------------------------------------------
 
         return {
             "status": "success",
@@ -302,11 +432,14 @@ def post_rekomendasi_pantai(
         raise
 
     except SQLAlchemyError as error:
-        print(f"[ERROR] Database rekomendasi: {error}", flush=True)
+        print(
+            f"[ERROR] Database rekomendasi: {error}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=500,
-            detail="Gagal mengambil daftar pantai aktif.",
+            detail="Gagal mengambil data rekomendasi pantai.",
         )
 
     except ValueError as error:
@@ -316,7 +449,10 @@ def post_rekomendasi_pantai(
         )
 
     except RuntimeError as error:
-        print(f"[ERROR] Model rekomendasi: {error}", flush=True)
+        print(
+            f"[ERROR] Model rekomendasi: {error}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=503,
@@ -351,7 +487,9 @@ def get_koordinat_pantai():
 
     try:
         with engine.connect() as connection:
-            hasil = connection.execute(query).mappings().all()
+            hasil = connection.execute(
+                query
+            ).mappings().all()
 
         data = [
             {
@@ -377,7 +515,10 @@ def get_koordinat_pantai():
         }
 
     except SQLAlchemyError as error:
-        print(f"[ERROR] Koordinat pantai: {error}", flush=True)
+        print(
+            f"[ERROR] Koordinat pantai: {error}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=500,
