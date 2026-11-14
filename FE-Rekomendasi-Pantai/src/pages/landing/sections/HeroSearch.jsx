@@ -59,7 +59,7 @@ export default function HeroSearch({ atribut = [] }) {
 
   return (
     <section className="relative bg-[#f8fafc] px-5 pb-24 pt-24 sm:pb-32 sm:pt-32">
-      <div className="pointer-events-none absolute -right-32 -top-32 h-96 w-96 rounded-full bg-sky-100/60 blur-3xl" />
+      <div className="pointer-events-none absolute right-0 top-0 h-96 w-96 max-w-full rounded-full bg-sky-100/60 blur-3xl" />
 
       <div className="relative mx-auto max-w-4xl">
         <div className="mx-auto max-w-3xl text-center">

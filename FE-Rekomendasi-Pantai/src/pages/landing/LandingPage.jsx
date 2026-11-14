@@ -1,6 +1,5 @@
 import React from "react";
 import HeroSearch from "./sections/HeroSearch";
-import PantaiUnggulan from "./sections/PantaiUnggulan";
 import CaraKerja from "./sections/CaraKerja";
 import StatistikData from "./sections/StatistikData";
 import Footer from "../../components/footer";
@@ -12,7 +11,6 @@ const LandingPage = () => {
       <Navbar />
       <HeroSearch />
       <StatistikData />
-      {/* <PantaiUnggulan /> */}
       <CaraKerja />
 
       {/* Footer Sederhana */}
