@@ -317,58 +317,6 @@ export default function SearchResult() {
               </button>
             </form>
 
-            {/* Tombol lokasi */}
-            <div className="mt-5">
-              <button
-                type="button"
-                onClick={aktifkanLokasi}
-                disabled={loadingLokasi || loadingKoordinat}
-                className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loadingLokasi ? (
-                  <RefreshCw size={16} className="animate-spin" />
-                ) : (
-                  <LocateFixed size={16} />
-                )}
-
-                {loadingKoordinat
-                  ? "Memuat data pantai..."
-                  : loadingLokasi
-                    ? "Mengambil lokasi..."
-                    : lokasiPengguna
-                      ? "Perbarui Lokasi"
-                      : "Aktifkan Lokasi"}
-              </button>
-
-              {lokasiPengguna && (
-                <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-green-700">
-                  <CheckCircle2 size={14} />
-                  Lokasi berhasil ditemukan.
-                </p>
-              )}
-
-              {!lokasiPengguna && statusLokasi && (
-                <p className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-amber-700">
-                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                  {statusLokasi}
-                </p>
-              )}
-
-              {errorKoordinat && (
-                <p className="mt-2 flex items-start gap-1.5 text-xs leading-5 text-red-600">
-                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                  {errorKoordinat}
-                </p>
-              )}
-
-              {lokasiPengguna && (
-                <p className="mt-2 text-xs text-slate-400">
-                  Jarak yang ditampilkan merupakan jarak geografis garis lurus,
-                  bukan jarak perjalanan.
-                </p>
-              )}
-            </div>
-
             {/* Kata kunci preprocessing */}
             {queryBersih && !loading && (
               <div className="mt-5 flex flex-wrap items-center gap-2 text-sm">
