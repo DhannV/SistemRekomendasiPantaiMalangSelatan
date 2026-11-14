@@ -712,9 +712,8 @@ export default function SearchResult() {
 
                 {lokasiPengguna && (
                   <p className="mt-3 text-xs leading-5 text-slate-500">
-                    Jarak merupakan perhitungan geografis garis lurus
-                    menggunakan rumus Haversine, bukan jarak perjalanan
-                    kendaraan.
+                    Jarak merupakan perhitungan geografis garis lurus, bukan
+                    jarak perjalanan kendaraan.
                   </p>
                 )}
 
